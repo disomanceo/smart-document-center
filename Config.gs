@@ -1,4 +1,10 @@
-const CONFIG = {
+/**
+ * Smart Document Center (SDC)
+ * Config.gs
+ * ค่าตั้งต้นของระบบ
+ */
+
+var CONFIG = {
   APP_NAME: 'Smart Document Center',
   APP_SHORT_NAME: 'SDC',
   SCHOOL_NAME: 'โรงเรียนวัดไผ่มุ้ง',
