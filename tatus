@@ -1,0 +1,5 @@
+[33m51d9e45[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdevelopment[m[33m, [m[1;31morigin/development[m[33m)[m fix update
+[33m2808316[m feat: add filename analysis service
+[33ma2a9ebd[m feat: add drive service for year and category folders
+[33m481e0f4[m feat: add database service
+[33m6aebaa1[m chore: connect project to github
