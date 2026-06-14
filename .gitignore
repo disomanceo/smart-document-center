@@ -1,2 +1,7 @@
+backup*/
+backup-*/
+backup_*/
+*.zip
+*.bak
+*.tmp
 node_modules/
-.env

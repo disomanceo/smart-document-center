@@ -1,0 +1,9 @@
+.git/**
+.github/**
+node_modules/**
+backup*/**
+backup-*/**
+backup_*/**
+*.zip
+*.bak
+*.tmp
