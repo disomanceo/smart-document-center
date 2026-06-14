@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <title>Smart Document Center</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <?!= include('Style'); ?>
+</head>
+
+<body>
+
+  <div class="app-shell">
+    <!-- Sidebar Desktop -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">📁</div>
+        <div>
+          <h1>SDC</h1>
+          <p>Smart Document Center</p>
+        </div>
+      </div>
+
+      <nav class="side-nav">
+        <button class="nav-btn active" data-page="dashboard" onclick="showPage('dashboard')">แดชบอร์ด</button>
+        <button class="nav-btn" data-page="upload" onclick="showPage('upload')">อัปโหลด</button>
+        <button class="nav-btn" data-page="documents" onclick="showPage('documents')">เอกสาร</button>
+        <button class="nav-btn" data-page="search" onclick="showPage('search')">ค้นหา</button>
+        <button class="nav-btn" data-page="settings" onclick="showPage('settings')">ตั้งค่า</button>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="appTitle">Smart Document Center</h2>
+          <p id="schoolName">โรงเรียนวัดไผ่มุ้ง</p>
+        </div>
+   <button class="refresh-btn" onclick="loadApp()">รีเฟรช</button>
+      </header>
+
+      <section id="alertBox" class="alert hidden"></section>
+
+      <!-- Dashboard -->
+      <section id="page-dashboard" class="page active">
+        <div class="page-title">
+          <h3>แดชบอร์ด</h3>
+          <p>ภาพรวมคลังเอกสาร</p>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <span>ไฟล์ทั้งหมด</span>
+            <strong id="statTotalFiles">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>ไฟล์ปีนี้</span>
+            <strong id="statThisYearFiles">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>รอตรวจสอบ</span>
+            <strong id="statPendingFiles">0</strong>
+          </div>
+          <div class="stat-card">
+            <span>ปี พ.ศ.</span>
+            <strong id="statCurrentYear">-</strong>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h4>เอกสารล่าสุด</h4>
+          </div>
+          <div id="recentFilesList" class="file-list">
+            <div class="empty">กำลังโหลดข้อมูล...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Upload -->
+      <section id="page-upload" class="page">
+        <div class="page-title">
+          <h3>อัปโหลด / เพิ่มเอกสาร</h3>
+          <p>เลือกไฟล์จริง วิเคราะห์ชื่อไฟล์ แล้วบันทึกลง Google Drive + Google Sheets</p>
+        </div>
+
+        <div class="card upload-card">
+          <div class="upload-zone">
+            <div class="upload-icon">📤</div>
+            <div>
+              <strong>เลือกไฟล์เอกสาร</strong>
+              <p>รองรับ PDF, Word, Excel, รูปภาพ และไฟล์เอกสารทั่วไป แนะนำไม่เกิน 10 MB ต่อไฟล์</p>
+            </div>
+            <input id="realFileInput" type="file" onchange="handleFileSelected()">
+          </div>
+
+          <div class="form-grid">
+            <label>
+              ชื่อไฟล์
+              <input id="manualFileName" type="text" placeholder="เช่น คำสั่งแต่งตั้งคณะกรรมการกีฬา ปี2569.pdf">
+            </label>
+
+            <label>
+              เรื่อง
+              <input id="manualSubject" type="text" placeholder="เช่น แต่งตั้งคณะกรรมการกีฬา">
+            </label>
+
+            <label>
+              ปี พ.ศ.
+              <input id="manualYearBE" type="text" placeholder="2569">
+            </label>
+
+            <label>
+              ประเภท
+              <select id="manualCategory"></select>
+            </label>
+
+            <label>
+              คำสำคัญ
+              <input id="manualKeywords" type="text" placeholder="คำสั่ง, กีฬา, แต่งตั้ง">
+            </label>
+
+            <label>
+              หมายเหตุ
+              <input id="manualNote" type="text" placeholder="หมายเหตุเพิ่มเติม">
+            </label>
+          </div>
+
+          <div class="action-row">
+            <button class="secondary-btn" onclick="analyzeSelectedFile()">วิเคราะห์จากไฟล์/ชื่อไฟล์</button>
+            <button class="ghost-btn" onclick="saveManualFile()">บันทึกเฉพาะข้อมูล</button>
+            <button id="uploadRealBtn" class="primary-btn" onclick="uploadRealFile()">อัปโหลดไฟล์จริง</button>
+          </div>
+
+          <div id="analysisResult" class="analysis-box hidden"></div>
+        </div>
+      </section>
+
+      <!-- Documents -->
+      <section id="page-documents" class="page">
+        <div class="page-title">
+          <h3>คลังเอกสาร</h3>
+          <p>รายการไฟล์ทั้งหมดในระบบ</p>
+        </div>
+
+        <div class="card">
+          <div id="documentsList" class="file-list">
+            <div class="empty">กำลังโหลดข้อมูล...</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Search -->
+      <section id="page-search" class="page">
+        <div class="page-title">
+          <h3>ค้นหาเอกสาร</h3>
+          <p>ค้นหาตามเรื่อง ปี พ.ศ. ประเภท หรือคำสำคัญ</p>
+        </div>
+
+        <div class="card">
+          <div class="search-row">
+            <input id="searchKeyword" type="text" placeholder="พิมพ์คำค้น เช่น กีฬา, คำสั่ง, พัสดุ">
+            <input id="searchYearBE" type="text" placeholder="ปี พ.ศ.">
+            <select id="searchCategory"></select>
+            <button class="primary-btn" onclick="searchDocuments()">ค้นหา</button>
+          </div>
+
+          <div id="searchResult" class="file-list">
+            <div class="empty">กรอกคำค้นแล้วกดค้นหา</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings -->
+      <section id="page-settings" class="page">
+        <div class="page-title">
+          <h3>ตั้งค่าระบบ</h3>
+          <p>ข้อมูลตั้งต้นของ Smart Document Center</p>
+        </div>
+
+        <div class="card">
+          <div id="settingsInfo" class="settings-info">
+            กำลังโหลดข้อมูล...
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Navigation Mobile -->
+    <nav class="bottom-nav">
+      <button class="bottom-btn active" data-page="dashboard" onclick="showPage('dashboard')">
+        <span>🏠</span>
+        <small>หน้าแรก</small>
+      </button>
+      <button class="bottom-btn" data-page="upload" onclick="showPage('upload')">
+        <span>⬆️</span>
+        <small>เพิ่ม</small>
+      </button>
+      <button class="bottom-btn" data-page="documents" onclick="showPage('documents')">
+        <span>📄</span>
+        <small>เอกสาร</small>
+      </button>
+      <button class="bottom-btn" data-page="search" onclick="showPage('search')">
+        <span>🔎</span>
+        <small>ค้นหา</small>
+      </button>
+      <button class="bottom-btn" data-page="settings" onclick="showPage('settings')">
+        <span>⚙️</span>
+        <small>ตั้งค่า</small>
+      </button>
+    </nav>
+  </div>
+
+  <?!= include('Script'); ?>
+</body>
+</html>

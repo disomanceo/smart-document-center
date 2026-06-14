@@ -1,0 +1,490 @@
+<script>
+  console.log('Script.html loaded');
+
+  let APP_STATE = {
+    categories: [],
+    files: []
+  };
+
+  document.addEventListener('DOMContentLoaded', function() {
+    loadApp();
+  });
+
+  function showAlert(message, type) {
+    const box = document.getElementById('alertBox');
+    const msg = String(message || '');
+
+    if (!box) {
+      console.log('[SDC]', type || 'info', msg);
+      return;
+    }
+
+    box.textContent = msg;
+    box.className = 'alert-box ' + (type || 'info');
+    box.classList.remove('hidden');
+
+    clearTimeout(window.__sdcAlertTimer);
+    window.__sdcAlertTimer = setTimeout(function() {
+      box.classList.add('hidden');
+    }, type === 'error' ? 8000 : 3500);
+  }
+
+  function showPage(page) {
+    document.querySelectorAll('.page').forEach(function(el) {
+      el.classList.remove('active');
+    });
+
+    const target = document.getElementById('page-' + page);
+    if (target) {
+      target.classList.add('active');
+    }
+
+    document.querySelectorAll('.nav-btn, .bottom-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.page === page);
+    });
+
+    if (page === 'documents') {
+      loadDocuments();
+    }
+  }
+
+  function loadApp() {
+    showAlert('กำลังโหลดข้อมูล...', 'info');
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        console.log('getAppInitData result:', res);
+
+        if (!res || !res.success) {
+          showAlert('โหลดระบบไม่สำเร็จ', 'error');
+          return;
+        }
+
+        document.getElementById('appTitle').textContent = res.appName || 'Smart Document Center';
+        document.getElementById('schoolName').textContent = res.schoolName || 'โรงเรียนวัดไผ่มุ้ง';
+
+        APP_STATE.categories = res.categories || [];
+
+        renderCategoryOptions();
+        renderDashboard(res.dashboard || {});
+        renderSettings(res);
+
+        showAlert('โหลดข้อมูลสำเร็จ', 'success');
+      })
+      .withFailureHandler(function(err) {
+        console.error('getAppInitData error:', err);
+        showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      })
+      .getAppInitData();
+  }
+
+  function renderCategoryOptions() {
+    const selects = [
+      document.getElementById('manualCategory'),
+      document.getElementById('searchCategory')
+    ];
+
+    selects.forEach(function(select) {
+      if (!select) return;
+
+      select.innerHTML = '';
+
+      const firstOption = document.createElement('option');
+      firstOption.value = '';
+      firstOption.textContent = select.id === 'searchCategory' ? 'ทุกประเภท' : 'เลือกประเภท';
+      select.appendChild(firstOption);
+
+      APP_STATE.categories.forEach(function(item) {
+        const option = document.createElement('option');
+        option.value = item['ชื่อหมวดหมู่'];
+        option.textContent = item['ชื่อหมวดหมู่'];
+        select.appendChild(option);
+      });
+    });
+  }
+
+  function renderDashboard(summary) {
+    document.getElementById('statTotalFiles').textContent = summary.totalFiles || 0;
+    document.getElementById('statThisYearFiles').textContent = summary.thisYearFiles || 0;
+    document.getElementById('statPendingFiles').textContent = summary.pendingFiles || 0;
+    document.getElementById('statCurrentYear').textContent = summary.currentYearBE || '-';
+
+    renderFileList('recentFilesList', summary.recentFiles || []);
+  }
+
+  function renderSettings(res) {
+    const el = document.getElementById('settingsInfo');
+    if (!el) return;
+
+    el.innerHTML = `
+      <strong>ชื่อระบบ:</strong> ${escapeHtml(res.appName || '-')}<br>
+      <strong>ชื่อย่อ:</strong> ${escapeHtml(res.appShortName || '-')}<br>
+      <strong>โรงเรียน:</strong> ${escapeHtml(res.schoolName || '-')}<br>
+      <strong>จำนวนหมวดหมู่:</strong> ${APP_STATE.categories.length}
+    `;
+  }
+
+  function loadDocuments() {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success) {
+          showAlert('โหลดรายการเอกสารไม่สำเร็จ', 'error');
+          return;
+        }
+
+        APP_STATE.files = res.data || [];
+        renderFileList('documentsList', APP_STATE.files.slice().reverse());
+      })
+      .withFailureHandler(function(err) {
+        showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      })
+      .apiGetFiles();
+  }
+
+  function renderFileList(containerId, files) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    if (!files || files.length === 0) {
+      container.innerHTML = '<div class="empty">ยังไม่มีข้อมูลเอกสาร</div>';
+      return;
+    }
+
+    container.innerHTML = files.map(function(file) {
+      const status = file['สถานะ'] || '-';
+      const statusClass = status === 'จัดเก็บแล้ว' ? 'confirmed' : 'pending';
+      const driveUrl = file['Drive URL'];
+      const title = file['เรื่อง'] || file['ชื่อไฟล์'] || 'ไม่ระบุเรื่อง';
+
+      return `
+        <div class="file-item">
+          <h4>${escapeHtml(title)}</h4>
+          <div class="file-meta">
+            <span class="badge">${escapeHtml(file['ประเภท'] || 'ไม่ระบุประเภท')}</span>
+            <span class="badge">ปี ${escapeHtml(file['ปี พ.ศ.'] || '-')}</span>
+            <span class="badge ${statusClass}">${escapeHtml(status)}</span>
+            <span>${escapeHtml(file['ชื่อไฟล์'] || '')}</span>
+          </div>
+          ${driveUrl ? `<div style="margin-top:8px"><a href="${escapeAttr(driveUrl)}" target="_blank">เปิดไฟล์</a></div>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function analyzeManualFileName() {
+    const fileName = document.getElementById('manualFileName').value.trim();
+
+    if (!fileName) {
+      showAlert('กรุณากรอกชื่อไฟล์ก่อน', 'warning');
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        console.log('analyze result:', res);
+
+        if (!res || !res.success) {
+          showAlert('วิเคราะห์ไม่สำเร็จ', 'error');
+          return;
+        }
+
+        const s = res.suggested || {};
+
+        document.getElementById('manualYearBE').value = s.yearBE || '';
+        document.getElementById('manualSubject').value = s.subject || '';
+        document.getElementById('manualCategory').value = s.category || '';
+        document.getElementById('manualKeywords').value = s.keywords || '';
+
+        const box = document.getElementById('analysisResult');
+        box.classList.remove('hidden');
+        box.innerHTML = `
+          <strong>ผลวิเคราะห์เบื้องต้น</strong><br>
+          ปี พ.ศ.: ${escapeHtml(s.yearBE || '-')}<br>
+          ประเภท: ${escapeHtml(s.category || '-')}<br>
+          เรื่อง: ${escapeHtml(s.subject || '-')}<br>
+          คำสำคัญ: ${escapeHtml(s.keywords || '-')}<br>
+          ความมั่นใจ: ${escapeHtml(String(s.aiConfidence || '-'))}%
+        `;
+
+        showAlert('วิเคราะห์ชื่อไฟล์สำเร็จ', 'success');
+      })
+      .withFailureHandler(function(err) {
+        console.error('analyze error:', err);
+        showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      })
+      .apiAnalyzeFileName(fileName);
+  }
+
+  function saveManualFile() {
+    const payload = {
+      fileName: document.getElementById('manualFileName').value.trim(),
+      subject: document.getElementById('manualSubject').value.trim(),
+      yearBE: document.getElementById('manualYearBE').value.trim(),
+      category: document.getElementById('manualCategory').value,
+      keywords: document.getElementById('manualKeywords').value.trim(),
+      note: document.getElementById('manualNote').value.trim()
+    };
+
+    if (!payload.fileName) {
+      showAlert('กรุณากรอกชื่อไฟล์', 'warning');
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success) {
+          showAlert('บันทึกไม่สำเร็จ', 'error');
+          return;
+        }
+
+        showAlert('บันทึกข้อมูลทดสอบสำเร็จ', 'success');
+        clearManualForm();
+        loadApp();
+      })
+      .withFailureHandler(function(err) {
+        showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      })
+      .apiAddManualFile(payload);
+  }
+
+  function clearManualForm() {
+    ['manualFileName', 'manualSubject', 'manualYearBE', 'manualKeywords', 'manualNote'].forEach(function(id) {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+
+    const category = document.getElementById('manualCategory');
+    if (category) category.value = '';
+
+    const analysis = document.getElementById('analysisResult');
+    if (analysis) analysis.classList.add('hidden');
+  }
+
+  function searchDocuments() {
+    const query = {
+      keyword: document.getElementById('searchKeyword').value.trim(),
+      yearBE: document.getElementById('searchYearBE').value.trim(),
+      category: document.getElementById('searchCategory').value
+    };
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (!res || !res.success) {
+          showAlert('ค้นหาไม่สำเร็จ', 'error');
+          return;
+        }
+
+        renderFileList('searchResult', res.data || []);
+        showAlert('พบเอกสาร ' + (res.count || 0) + ' รายการ', 'success');
+      })
+      .withFailureHandler(function(err) {
+        showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+      })
+      .apiSearchFiles(query);
+  }
+
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value);
+  }
+
+
+
+  function handleFileSelected() {
+    const fileInput = document.getElementById('realFileInput');
+    const manualFileName = document.getElementById('manualFileName');
+
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) return;
+
+    const file = fileInput.files[0];
+    if (manualFileName) manualFileName.value = file.name;
+
+    if (file.size > 10 * 1024 * 1024) {
+      showAlert('ไฟล์มีขนาดใหญ่กว่า 10 MB อาจอัปโหลดไม่สำเร็จ แนะนำลดขนาดไฟล์ก่อน', 'warning');
+      return;
+    }
+
+    analyzeSelectedFile();
+  }
+
+  function analyzeSelectedFile() {
+  const fileInput = document.getElementById('realFileInput');
+  const manualFileName = document.getElementById('manualFileName');
+
+  let fileName = '';
+
+  if (fileInput && fileInput.files && fileInput.files.length > 0) {
+    fileName = fileInput.files[0].name;
+    manualFileName.value = fileName;
+  } else {
+    fileName = manualFileName.value.trim();
+  }
+
+  if (!fileName) {
+    showAlert('กรุณาเลือกไฟล์หรือกรอกชื่อไฟล์ก่อน', 'warning');
+    return;
+  }
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.success) {
+        showAlert('วิเคราะห์ไม่สำเร็จ', 'error');
+        return;
+      }
+
+      const s = res.suggested || {};
+
+      document.getElementById('manualYearBE').value = s.yearBE || '';
+      document.getElementById('manualSubject').value = s.subject || '';
+      document.getElementById('manualCategory').value = s.category || '';
+      document.getElementById('manualKeywords').value = s.keywords || '';
+
+      const box = document.getElementById('analysisResult');
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <strong>ผลวิเคราะห์เบื้องต้น</strong><br>
+        ปี พ.ศ.: ${escapeHtml(s.yearBE || '-')}<br>
+        ประเภท: ${escapeHtml(s.category || '-')}<br>
+        เรื่อง: ${escapeHtml(s.subject || '-')}<br>
+        คำสำคัญ: ${escapeHtml(s.keywords || '-')}<br>
+        ความมั่นใจ: ${escapeHtml(String(s.aiConfidence || '-'))}%
+      `;
+
+      showAlert('วิเคราะห์ชื่อไฟล์สำเร็จ', 'success');
+    })
+    .withFailureHandler(function(err) {
+      showAlert('เกิดข้อผิดพลาด: ' + err.message, 'error');
+    })
+    .apiAnalyzeFileName(fileName);
+}
+
+function uploadRealFile() {
+  const fileInput = document.getElementById('realFileInput');
+  const uploadBtn = document.getElementById('uploadRealBtn');
+
+  if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+    showAlert('กรุณาเลือกไฟล์ก่อน', 'warning');
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  if (file.size > 10 * 1024 * 1024) {
+    showAlert('ไฟล์ใหญ่เกิน 10 MB กรุณาเลือกไฟล์ที่เล็กลง', 'warning');
+    return;
+  }
+
+  const payload = {
+    fileName: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    yearBE: document.getElementById('manualYearBE').value.trim(),
+    category: document.getElementById('manualCategory').value,
+    subject: document.getElementById('manualSubject').value.trim(),
+    keywords: document.getElementById('manualKeywords').value.trim(),
+    note: document.getElementById('manualNote').value.trim()
+  };
+
+  if (!payload.yearBE) {
+    showAlert('กรุณาระบุปี พ.ศ. ก่อนอัปโหลด', 'warning');
+    return;
+  }
+
+  if (!payload.category) {
+    showAlert('กรุณาเลือกประเภทเอกสารก่อนอัปโหลด', 'warning');
+    return;
+  }
+
+  if (uploadBtn) {
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'กำลังอัปโหลด...';
+  }
+
+  showAlert('กำลังอ่านไฟล์...', 'info');
+
+  const reader = new FileReader();
+
+  reader.onload = function(e) {
+    try {
+      const dataUrl = e.target.result || '';
+      const base64 = dataUrl.split(',')[1];
+
+      if (!base64) {
+        throw new Error('อ่านข้อมูลไฟล์ไม่สำเร็จ');
+      }
+
+      payload.base64 = base64;
+      showAlert('กำลังอัปโหลดไฟล์เข้า Google Drive...', 'info');
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (uploadBtn) {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'อัปโหลดไฟล์จริง';
+          }
+
+          if (!res || !res.success) {
+            showAlert('อัปโหลดไม่สำเร็จ: ' + ((res && res.message) || 'ไม่ทราบสาเหตุ'), 'error');
+            return;
+          }
+
+          showAlert('อัปโหลดไฟล์สำเร็จ', 'success');
+          clearUploadForm();
+          loadApp();
+
+          setTimeout(function() {
+            showPage('documents');
+          }, 600);
+        })
+        .withFailureHandler(function(err) {
+          if (uploadBtn) {
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'อัปโหลดไฟล์จริง';
+          }
+
+          console.error('apiUploadFile error:', err);
+          showAlert('อัปโหลดไม่สำเร็จ: ' + ((err && err.message) || err), 'error');
+        })
+        .apiUploadFile(payload);
+    } catch (error) {
+      if (uploadBtn) {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'อัปโหลดไฟล์จริง';
+      }
+      console.error('read file error:', error);
+      showAlert('อ่านไฟล์ไม่สำเร็จ: ' + error.message, 'error');
+    }
+  };
+
+  reader.onerror = function() {
+    if (uploadBtn) {
+      uploadBtn.disabled = false;
+      uploadBtn.textContent = 'อัปโหลดไฟล์จริง';
+    }
+    showAlert('อ่านไฟล์ไม่สำเร็จ', 'error');
+  };
+
+  reader.readAsDataURL(file);
+}
+
+function clearUploadForm() {
+  const fileInput = document.getElementById('realFileInput');
+  if (fileInput) fileInput.value = '';
+
+  clearManualForm();
+}
+
+  window.uploadRealFile = uploadRealFile;
+  window.handleFileSelected = handleFileSelected;
+  window.analyzeSelectedFile = analyzeSelectedFile;
+  window.saveManualFile = saveManualFile;
+  window.showPage = showPage;
+  window.loadApp = loadApp;
+</script>
