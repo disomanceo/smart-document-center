@@ -133,14 +133,3 @@ function apiAddManualFile(fileData) {
 function testGetAppInitData() {
   return getAppInitData();
 }
-
-/**
- * API: ทดสอบการเชื่อมต่อจากหน้าเว็บ
- */
-function apiPing() {
-  return {
-    success: true,
-    message: 'SDC server ready',
-    time: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'HH:mm:ss')
-  };
-}

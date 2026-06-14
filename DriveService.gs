@@ -1,244 +1,118 @@
 /**
  * Smart Document Center (SDC)
  * DriveService.gs
- * จัดการ Google Drive และโฟลเดอร์จัดเก็บเอกสาร
+ * อัปโหลดไฟล์จริงเข้า Google Drive และบันทึกข้อมูลลง Sheet FILES
  */
 
 /**
- * เปิด Root Folder หลัก
+ * API: อัปโหลดไฟล์จากหน้าเว็บ
+ * payload: {fileName, mimeType, base64, yearBE, category, subject, keywords, note}
  */
-function getRootFolder_() {
-  return DriveApp.getFolderById(CONFIG.ROOT_FOLDER_ID);
+function apiUploadFile(payload) {
+  payload = payload || {};
+
+  if (!payload.fileName) {
+    return { success: false, message: 'ไม่พบชื่อไฟล์' };
+  }
+
+  if (!payload.base64) {
+    return { success: false, message: 'ไม่พบข้อมูลไฟล์สำหรับอัปโหลด' };
+  }
+
+  const fileName = String(payload.fileName).trim();
+  const analysis = analyzeFileName(fileName);
+  const suggested = analysis.suggested || {};
+
+  const yearBE = String(payload.yearBE || suggested.yearBE || (new Date().getFullYear() + 543)).trim();
+  const category = String(payload.category || suggested.category || 'อื่น ๆ').trim();
+  const subject = String(payload.subject || suggested.subject || fileName).trim();
+  const keywords = String(payload.keywords || suggested.keywords || '').trim();
+  const note = String(payload.note || '').trim();
+
+  const uploadResult = saveBase64FileToDrive_({
+    fileName: fileName,
+    mimeType: payload.mimeType || MimeType.PDF,
+    base64: payload.base64,
+    yearBE: yearBE,
+    category: category
+  });
+
+  const recordResult = addFileRecord({
+    fileName: fileName,
+    category: category,
+    yearBE: yearBE,
+    subject: subject,
+    owner: CONFIG.SCHOOL_NAME,
+    documentDate: '',
+    driveFileId: uploadResult.fileId,
+    driveUrl: uploadResult.fileUrl,
+    folderId: uploadResult.folderId,
+    folderPath: uploadResult.folderPath,
+    keywords: keywords,
+    aiConfidence: suggested.aiConfidence || '',
+    status: CONFIG.FILE_STATUS.CONFIRMED,
+    source: 'WEB_UPLOAD',
+    note: note
+  });
+
+  saveLog('UPLOAD_FILE', 'อัปโหลดไฟล์: ' + fileName, 'SUCCESS');
+
+  return {
+    success: true,
+    id: recordResult.id,
+    fileId: uploadResult.fileId,
+    fileUrl: uploadResult.fileUrl,
+    folderId: uploadResult.folderId,
+    folderPath: uploadResult.folderPath,
+    message: 'อัปโหลดและบันทึกเอกสารสำเร็จ'
+  };
 }
 
 /**
- * ดึงหรือสร้างโฟลเดอร์ย่อย
+ * บันทึก base64 เป็นไฟล์ใน Drive ตามโครงสร้าง ปี พ.ศ. / ประเภท
  */
-function getOrCreateFolder_(parentFolder, folderName) {
-  const folders = parentFolder.getFoldersByName(folderName);
+function saveBase64FileToDrive_(data) {
+  const rootFolder = DriveApp.getFolderById(CONFIG.ROOT_FOLDER_ID);
+  const yearFolder = getOrCreateSubFolder_(rootFolder, sanitizeFolderName_(data.yearBE));
+  const categoryFolder = getOrCreateSubFolder_(yearFolder, sanitizeFolderName_(data.category));
+
+  const bytes = Utilities.base64Decode(data.base64);
+  const blob = Utilities.newBlob(bytes, data.mimeType || MimeType.PDF, data.fileName);
+  const file = categoryFolder.createFile(blob);
+
+  return {
+    fileId: file.getId(),
+    fileUrl: file.getUrl(),
+    folderId: categoryFolder.getId(),
+    folderPath: data.yearBE + '/' + data.category
+  };
+}
+
+/**
+ * สร้าง/ดึงโฟลเดอร์ย่อยตามชื่อ
+ * ใช้ชื่อเดียวกับ helper ใน Setup.gs ได้ แต่แยกไว้เพื่อให้ DriveService ใช้งานได้แน่นอน
+ */
+function getOrCreateSubFolder_(parentFolder, folderName) {
+  const safeName = sanitizeFolderName_(folderName || 'อื่น ๆ');
+  const folders = parentFolder.getFoldersByName(safeName);
 
   if (folders.hasNext()) {
     return folders.next();
   }
 
-  return parentFolder.createFolder(folderName);
+  return parentFolder.createFolder(safeName);
 }
 
 /**
- * ดึงปี พ.ศ. ปัจจุบัน
+ * กันอักขระที่ไม่เหมาะกับชื่อโฟลเดอร์
  */
-function getCurrentYearBE_() {
-  return new Date().getFullYear() + 543;
-}
-
-/**
- * ทำชื่อไฟล์/โฟลเดอร์ให้ปลอดภัย
- */
-function sanitizeName_(name) {
-  return String(name || '')
+function sanitizeFolderName_(name) {
+  return String(name || 'อื่น ๆ')
     .replace(/[\\/:*?"<>|]/g, '-')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim() || 'อื่น ๆ';
 }
 
-/**
- * สร้างหรือดึงโฟลเดอร์ปี พ.ศ.
- */
-function getYearFolder(yearBE) {
-  const rootFolder = getRootFolder_();
-  const yearName = String(yearBE || getCurrentYearBE_());
-
-  return getOrCreateFolder_(rootFolder, yearName);
-}
-
-/**
- * สร้างหรือดึงโฟลเดอร์หมวดหมู่ในปีนั้น
- */
-function getCategoryFolder(yearBE, category) {
-  const yearFolder = getYearFolder(yearBE);
-  const safeCategory = sanitizeName_(category || 'อื่น ๆ');
-
-  return getOrCreateFolder_(yearFolder, safeCategory);
-}
-
-/**
- * เตรียมโฟลเดอร์จัดเก็บไฟล์
- */
-function prepareStorageFolder(yearBE, category) {
-  const folder = getCategoryFolder(yearBE, category);
-
-  return {
-    success: true,
-    folderId: folder.getId(),
-    folderName: folder.getName(),
-    folderUrl: folder.getUrl(),
-    folderPath: String(yearBE || getCurrentYearBE_()) + '/' + String(category || 'อื่น ๆ')
-  };
-}
-
-/**
- * บันทึก Blob เป็นไฟล์ใน Drive
- * ใช้รองรับ Upload จาก Web หรือ LINE ในอนาคต
- */
-function saveBlobToDrive(blob, options) {
-  options = options || {};
-
-  const yearBE = options.yearBE || getCurrentYearBE_();
-  const category = options.category || 'อื่น ๆ';
-  const folder = getCategoryFolder(yearBE, category);
-
-  let fileName = options.fileName || blob.getName() || 'เอกสารไม่ระบุชื่อ';
-  fileName = sanitizeName_(fileName);
-
-  const file = folder.createFile(blob).setName(fileName);
-
-  const result = {
-    success: true,
-    fileId: file.getId(),
-    fileName: file.getName(),
-    fileUrl: file.getUrl(),
-    folderId: folder.getId(),
-    folderPath: String(yearBE) + '/' + String(category),
-    yearBE: String(yearBE),
-    category: String(category)
-  };
-
-  saveLog('SAVE_FILE_DRIVE', 'บันทึกไฟล์ลง Drive: ' + fileName, 'SUCCESS');
-
-  return result;
-}
-
-/**
- * ย้ายไฟล์ไปยังโฟลเดอร์ ปี/หมวดหมู่
- */
-function moveFileToCategory(fileId, yearBE, category) {
-  const file = DriveApp.getFileById(fileId);
-  const targetFolder = getCategoryFolder(yearBE, category);
-
-  targetFolder.addFile(file);
-
-  const parents = file.getParents();
-  while (parents.hasNext()) {
-    const parent = parents.next();
-
-    if (parent.getId() !== targetFolder.getId()) {
-      parent.removeFile(file);
-    }
-  }
-
-  saveLog(
-    'MOVE_FILE',
-    'ย้ายไฟล์ ' + file.getName() + ' ไปยัง ' + yearBE + '/' + category,
-    'SUCCESS'
-  );
-
-  return {
-    success: true,
-    fileId: file.getId(),
-    fileName: file.getName(),
-    fileUrl: file.getUrl(),
-    folderId: targetFolder.getId(),
-    folderPath: String(yearBE) + '/' + String(category)
-  };
-}
-
-/**
- * ดึงข้อมูลไฟล์จาก Drive
- */
-function getDriveFileInfo(fileId) {
-  const file = DriveApp.getFileById(fileId);
-
-  return {
-    success: true,
-    fileId: file.getId(),
-    fileName: file.getName(),
-    fileUrl: file.getUrl(),
-    mimeType: file.getMimeType(),
-    size: file.getSize(),
-    createdAt: file.getDateCreated(),
-    updatedAt: file.getLastUpdated()
-  };
-}
-
-/**
- * สร้างโครงโฟลเดอร์ตามหมวดหมู่ทั้งหมดของระบบในปีที่ระบุ
- */
-function createYearCategoryFolders(yearBE) {
-  const year = yearBE || getCurrentYearBE_();
-  const categoriesResult = getCategories();
-  const categories = categoriesResult.data || [];
-
-  const created = [];
-
-  categories.forEach(function(category) {
-    const categoryName = category['ชื่อหมวดหมู่'];
-    const folder = getCategoryFolder(year, categoryName);
-
-    created.push({
-      category: categoryName,
-      folderId: folder.getId(),
-      folderUrl: folder.getUrl(),
-      folderPath: String(year) + '/' + categoryName
-    });
-  });
-
-  saveLog(
-    'CREATE_YEAR_FOLDERS',
-    'สร้างโฟลเดอร์ปี ' + year + ' จำนวน ' + created.length + ' หมวดหมู่',
-    'SUCCESS'
-  );
-
-  return {
-    success: true,
-    yearBE: String(year),
-    count: created.length,
-    data: created
-  };
-}
-
-/**
- * ทดสอบสร้างโฟลเดอร์ปีปัจจุบันและหมวดหมู่ทั้งหมด
- */
-function testCreateYearFolders() {
-  return createYearCategoryFolders(getCurrentYearBE_());
-}
-
-/**
- * ทดสอบเตรียมโฟลเดอร์
- */
-function testPrepareStorageFolder() {
-  return prepareStorageFolder('2569', 'คำสั่งโรงเรียน');
-}
-
-/**
- * ทดสอบสร้างไฟล์ข้อความลง Drive
- */
-function testSaveTextFileToDrive() {
-  const content = 'ทดสอบระบบ Smart Document Center\nโรงเรียนวัดไผ่มุ้ง\n' + new Date();
-  const blob = Utilities.newBlob(content, 'text/plain', 'test-smart-document-center.txt');
-
-  const driveResult = saveBlobToDrive(blob, {
-    fileName: 'ทดสอบบันทึกไฟล์ SDC.txt',
-    yearBE: '2569',
-    category: 'อื่น ๆ'
-  });
-
-  addFileRecord({
-    fileName: driveResult.fileName,
-    category: driveResult.category,
-    yearBE: driveResult.yearBE,
-    subject: 'ทดสอบบันทึกไฟล์ลง Drive',
-    owner: CONFIG.SCHOOL_NAME,
-    driveFileId: driveResult.fileId,
-    driveUrl: driveResult.fileUrl,
-    folderId: driveResult.folderId,
-    folderPath: driveResult.folderPath,
-    keywords: 'ทดสอบ, SDC, Drive',
-    aiConfidence: '',
-    status: CONFIG.FILE_STATUS.CONFIRMED,
-    source: 'TEST',
-    note: 'ไฟล์ทดสอบจาก DriveService.gs'
-  });
-
-  return driveResult;
+function testApiUploadFileMissingPayload() {
+  return apiUploadFile({});
 }

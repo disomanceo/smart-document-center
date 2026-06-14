@@ -86,7 +86,7 @@
       <section id="page-upload" class="page">
         <div class="page-title">
           <h3>อัปโหลด / เพิ่มเอกสาร</h3>
-          <p>เลือกไฟล์จริง แล้วกดอัปโหลดได้ทันที หากไม่เลือกประเภท ระบบจะใช้ “อื่น ๆ” อัตโนมัติ</p>
+          <p>เลือกไฟล์จริง วิเคราะห์ชื่อไฟล์ แล้วบันทึกลง Google Drive + Google Sheets</p>
         </div>
 
         <div class="card upload-card">
@@ -115,36 +115,9 @@
               <input id="manualYearBE" type="text" placeholder="2569">
             </label>
 
-            <label class="category-field">
-              ประเภท <small style="color:#64748b;font-weight:500">(เลือกได้ / ถ้าไม่เลือกจะเป็น อื่น ๆ)</small>
-              <select id="manualCategory">
-                <option value="อื่น ๆ" selected>อื่น ๆ</option>
-                <option value="หนังสือรับ">หนังสือรับ</option>
-                <option value="หนังสือส่ง">หนังสือส่ง</option>
-                <option value="คำสั่งโรงเรียน">คำสั่งโรงเรียน</option>
-                <option value="งานบุคคล">งานบุคคล</option>
-                <option value="การเงิน">การเงิน</option>
-                <option value="พัสดุ">พัสดุ</option>
-                <option value="งานวิชาการ">งานวิชาการ</option>
-                <option value="ประชุม">ประชุม</option>
-                <option value="แผนงาน/โครงการ">แผนงาน/โครงการ</option>
-                <option value="รายงาน">รายงาน</option>
-                <option value="อื่น ๆ">อื่น ๆ</option>
-              </select>
-              <input id="manualCategoryFallback" type="hidden" value="อื่น ๆ">
-              <div id="categoryChips" class="category-chips" aria-label="เลือกประเภทเอกสารแบบปุ่ม">
-                <button type="button" class="category-chip active" data-category="อื่น ๆ">อื่น ๆ</button>
-                <button type="button" class="category-chip" data-category="หนังสือรับ">หนังสือรับ</button>
-                <button type="button" class="category-chip" data-category="หนังสือส่ง">หนังสือส่ง</button>
-                <button type="button" class="category-chip" data-category="คำสั่งโรงเรียน">คำสั่งโรงเรียน</button>
-                <button type="button" class="category-chip" data-category="งานบุคคล">งานบุคคล</button>
-                <button type="button" class="category-chip" data-category="การเงิน">การเงิน</button>
-                <button type="button" class="category-chip" data-category="พัสดุ">พัสดุ</button>
-                <button type="button" class="category-chip" data-category="งานวิชาการ">งานวิชาการ</button>
-                <button type="button" class="category-chip" data-category="ประชุม">ประชุม</button>
-                <button type="button" class="category-chip" data-category="แผนงาน/โครงการ">แผนงาน/โครงการ</button>
-                <button type="button" class="category-chip" data-category="รายงาน">รายงาน</button>
-              </div>
+            <label>
+              ประเภท
+              <select id="manualCategory"></select>
             </label>
 
             <label>
@@ -159,14 +132,11 @@
           </div>
 
           <div class="action-row">
-            <button id="analyzeFileBtn" class="secondary-btn" type="button" onclick="analyzeSelectedFile()">วิเคราะห์จากไฟล์/ชื่อไฟล์</button>
-            <button id="saveManualBtn" class="ghost-btn" type="button" onclick="saveManualFile()">บันทึกเฉพาะข้อมูล</button>
-            <button id="uploadRealBtn" class="primary-btn" type="button" onclick="uploadRealFile()">อัปโหลดไฟล์จริง</button>
+            <button class="secondary-btn" onclick="analyzeSelectedFile()">วิเคราะห์จากไฟล์/ชื่อไฟล์</button>
+            <button class="ghost-btn" onclick="saveManualFile()">บันทึกเฉพาะข้อมูล</button>
+            <button id="uploadRealBtn" class="primary-btn" onclick="uploadRealFile()">อัปโหลดไฟล์จริง</button>
           </div>
 
-          <div id="uploadStatus" class="upload-status upload-status-info">หน้าอัปโหลดพร้อมใช้งาน (v5) — เลือกไฟล์แล้วกดอัปโหลดได้เลย</div>
-          <div id="clientTestStatus" class="client-test-status">กำลังตรวจสอบ JavaScript...</div>
-          <button id="testClientBtn" class="ghost-btn mini-btn" type="button" onclick="sdcClientSelfTest()">ทดสอบปุ่ม/JavaScript</button>
           <div id="analysisResult" class="analysis-box hidden"></div>
         </div>
       </section>
@@ -196,20 +166,7 @@
           <div class="search-row">
             <input id="searchKeyword" type="text" placeholder="พิมพ์คำค้น เช่น กีฬา, คำสั่ง, พัสดุ">
             <input id="searchYearBE" type="text" placeholder="ปี พ.ศ.">
-            <select id="searchCategory">
-              <option value="">ทุกประเภท</option>
-              <option value="หนังสือรับ">หนังสือรับ</option>
-              <option value="หนังสือส่ง">หนังสือส่ง</option>
-              <option value="คำสั่งโรงเรียน">คำสั่งโรงเรียน</option>
-              <option value="งานบุคคล">งานบุคคล</option>
-              <option value="การเงิน">การเงิน</option>
-              <option value="พัสดุ">พัสดุ</option>
-              <option value="งานวิชาการ">งานวิชาการ</option>
-              <option value="ประชุม">ประชุม</option>
-              <option value="แผนงาน/โครงการ">แผนงาน/โครงการ</option>
-              <option value="รายงาน">รายงาน</option>
-              <option value="อื่น ๆ">อื่น ๆ</option>
-            </select>
+            <select id="searchCategory"></select>
             <button class="primary-btn" onclick="searchDocuments()">ค้นหา</button>
           </div>
 
